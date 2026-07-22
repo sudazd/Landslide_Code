@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(r"E:\Data\Model\RF_Plateau")
+ROOT = Path(r"E:\Data\Model\RF_Plateau722_3070")
 WORK = ROOT / "STRUT_rf"
 RF_MODEL = ROOT / "rf_model.pkl"
 TARGET_DIR = WORK / "TargetSamples"
