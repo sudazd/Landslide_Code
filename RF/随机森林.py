@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""基于随机森林的黄土高原滑坡易发性预测。"""
+"""基于随机森林的黄土高原滑坡易发性预测。黄土高原大区域，被迁移的原模型"""
 
 import os
 import sys
@@ -33,7 +33,16 @@ if _hist_module_name not in sys.modules:
     sys.modules[_hist_module_name] = _hist_module
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    roc_curve,
+)
 from sklearn.preprocessing import MinMaxScaler
 
 
@@ -51,11 +60,12 @@ factor_paths = {
 }
 feature_names = list(factor_paths)
 
-train_landslide_path = r"E:\Data\landslide_7030_Plateau\landslide_Plateau_70.shp"
-test_landslide_path = r"E:\Data\landslide_7030_Plateau\landslide_Plateau_30.shp"
-nonlandslide_path = r"E:\Data\Data\non_landslide_Plteau_prj.shp"
+train_landslide_path = r"E:\Data\zone_landslide\landslide_7030_Plateau\landslide_Plateau_70.shp"
+test_landslide_path = r"E:\Data\zone_landslide\landslide_7030_Plateau\landslide_Plateau_30.shp"
+train_nonlandslide_path = r"E:\No_landslide_random\Plateau_nolandslide70.shp"
+test_nonlandslide_path = r"E:\No_landslide_random\Plateau_nolandslide30.shp"
 region_shp_path = r"E:\Data\LoessPlateauRegion\LoessPlateauRegion.shp"
-output_folder = r"E:\Data\Model\RF_Plateau722_3070"
+output_folder = r"E:\Data\Model\RF_Plateau827_3070"
 
 RANDOM_STATE = 42
 BLOCK_SIZE = 500
@@ -101,7 +111,8 @@ require_files(
         *factor_paths.values(),
         train_landslide_path,
         test_landslide_path,
-        nonlandslide_path,
+        train_nonlandslide_path,
+        test_nonlandslide_path,
         region_shp_path,
     ]
 )
@@ -198,45 +209,13 @@ def extract_values(shp_path):
 
 X_train_ls = extract_values(train_landslide_path)
 X_test_ls = extract_values(test_landslide_path)
-X_nls_all = extract_values(nonlandslide_path)
+X_train_nls = extract_values(train_nonlandslide_path)
+X_test_nls = extract_values(test_nonlandslide_path)
 
 
-# 4. 划分非滑坡点并组合数据
-n_available_nls = len(X_nls_all)
-n_total_ls = len(X_train_ls) + len(X_test_ls)
+# 4. 分别组合训练集和独立测试集
+# 70% 的滑坡点与非滑坡点只用于训练；30% 的滑坡点与非滑坡点只用于精度验证。
 rng = np.random.default_rng(RANDOM_STATE)
-
-# 有效非滑坡点略少时，不进行有放回抽样（会产生重复样本），而是按原训练/测试
-# 比例下采样滑坡点，从而保持两个数据集内部的正负样本数量相等。
-if n_available_nls < n_total_ls:
-    target_train_ls = int(round(n_available_nls * len(X_train_ls) / n_total_ls))
-    target_train_ls = min(max(target_train_ls, 1), len(X_train_ls))
-    target_test_ls = n_available_nls - target_train_ls
-    if target_test_ls < 1 or target_test_ls > len(X_test_ls):
-        raise ValueError("有效样本过少，无法同时构建训练集和测试集。")
-
-    removed_train = len(X_train_ls) - target_train_ls
-    removed_test = len(X_test_ls) - target_test_ls
-    X_train_ls = X_train_ls[rng.permutation(len(X_train_ls))[:target_train_ls]]
-    X_test_ls = X_test_ls[rng.permutation(len(X_test_ls))[:target_test_ls]]
-    print(
-        "有效非滑坡点少于滑坡点，已按原比例下采样滑坡点："
-        f"训练集移除 {removed_train} 个，测试集移除 {removed_test} 个。"
-    )
-
-n_train_nls = len(X_train_ls)
-n_test_nls = len(X_test_ls)
-n_required = n_train_nls + n_test_nls
-if len(X_nls_all) < n_required:
-    raise ValueError(
-        "有效非滑坡样本数量不足："
-        f"需要 {n_required} 个（训练 {n_train_nls} + 测试 {n_test_nls}），"
-        f"实际只有 {len(X_nls_all)} 个。"
-    )
-
-shuffled_indices = rng.permutation(len(X_nls_all))
-X_train_nls = X_nls_all[shuffled_indices[:n_train_nls]]
-X_test_nls = X_nls_all[shuffled_indices[n_train_nls:n_required]]
 
 X_train = np.vstack((X_train_ls, X_train_nls))
 y_train = np.hstack((np.ones(len(X_train_ls), dtype=np.int32), np.zeros(len(X_train_nls), dtype=np.int32)))
@@ -292,8 +271,40 @@ print("使用独立测试集评估模型……")
 y_pred = model.predict(X_test)
 y_prob = model.predict_proba(X_test)[:, 1]
 test_auc = roc_auc_score(y_test, y_prob)
+validation_metrics = {
+    "Accuracy": accuracy_score(y_test, y_pred),
+    "Precision": precision_score(y_test, y_pred, zero_division=0),
+    "Recall": recall_score(y_test, y_pred, zero_division=0),
+    "F1-score": f1_score(y_test, y_pred, zero_division=0),
+    "ROC-AUC": test_auc,
+}
 print("测试集 AUC：", test_auc)
 print(classification_report(y_test, y_pred, digits=4))
+print("精度验证指标：")
+for metric_name, metric_value in validation_metrics.items():
+    print(f"  {metric_name}: {metric_value:.4f}")
+
+plt.figure(figsize=(8, 5))
+bars = plt.bar(
+    validation_metrics.keys(),
+    validation_metrics.values(),
+    color=["#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2"],
+)
+plt.ylim(0, 1.08)
+plt.ylabel("Score")
+plt.title("Independent Test Set Validation Metrics")
+plt.grid(axis="y", linestyle="--", alpha=0.3)
+for bar, value in zip(bars, validation_metrics.values()):
+    plt.text(
+        bar.get_x() + bar.get_width() / 2,
+        value + 0.02,
+        f"{value:.3f}",
+        ha="center",
+        va="bottom",
+    )
+plt.tight_layout()
+plt.savefig(os.path.join(output_folder, "validation_metrics.png"), dpi=300, bbox_inches="tight")
+plt.close()
 
 cm = confusion_matrix(y_test, y_pred)
 plt.figure(figsize=(6, 5))
