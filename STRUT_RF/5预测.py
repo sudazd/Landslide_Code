@@ -29,10 +29,10 @@ from rasterio.enums import Resampling
 # 1.路径设置
 # ==================================
 
-SCALER = r"E:\Data\Model\RF_Plateau722_3070\scaler.pkl"
+SCALER = r"E:\Data\Model\RF_Plateau827_3070\scaler.pkl"
 scaler = joblib.load(SCALER)
 MODEL_DIR = (
-r"E:\Data\Model\RF_Plateau722_3070\STRUT_rf\UpdateModel_corrected_step4"
+r"E:\Data\Model\RF_Plateau827_3070\STRUT_rf\UpdateModel_corrected_step4"
 )
 
 
@@ -60,7 +60,7 @@ FACTOR_PATHS = {
 
 
 OUTPUT_DIR = (
-r"E:\Data\Model\RF_Plateau722_3070\STRUT_rf\Prediction2"
+r"E:\Data\Model\RF_Plateau827_3070\STRUT_rf\Prediction2"
 )
 
 
